@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/olamij3/sentrygrid/internal/detect"
+	"github.com/olamij3/sentrygrid/internal/pool"
 	"github.com/olamij3/sentrygrid/internal/sensor"
 )
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	profiles := map[string]sensor.Profile{
@@ -31,13 +33,17 @@ func main() {
 		},
 	}
 
-	fmt.Println("SentryGrid starting — reading for 5 seconds...")
+	readings := sensor.StartDevices(ctx, profiles)
+	registry := detect.NewRegistry()
+	anomalies := pool.Run(ctx, readings, 4, registry)
+
+	fmt.Println("SentryGrid running — watching for anomalies for 10 seconds...")
 	fmt.Println()
 
-	for r := range sensor.StartDevices(ctx, profiles) {
-		fmt.Printf("[%s]  device=%-8s  value=%.4f\n",
-			r.Timestamp.Format("15:04:05.000"), r.DeviceID, r.Value)
+	for a := range anomalies {
+		fmt.Printf("🚨 ANOMALY  [%s]  device=%-8s  value=%.4f  method=%-8s  score=%.4f\n",
+			a.Timestamp.Format("15:04:05.000"), a.DeviceID, a.Value, a.Method, a.Score)
 	}
 
-	fmt.Println("\nDone. All devices stopped cleanly.")
+	fmt.Println("\nDone. All workers stopped cleanly.")
 }
