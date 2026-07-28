@@ -1,0 +1,4 @@
+sentrygrid.db
+sentrygrid.db-journal
+sentrygrid.db-wal
+sentrygrid.db-shm

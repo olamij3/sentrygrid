@@ -4,19 +4,19 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
+	"github.com/olamij3/sentrygrid/internal/api"
 	"github.com/olamij3/sentrygrid/internal/detect"
 	"github.com/olamij3/sentrygrid/internal/pool"
 	"github.com/olamij3/sentrygrid/internal/sensor"
 	"github.com/olamij3/sentrygrid/internal/store"
 )
 
-// tee fans one readings channel into two independent channels
 func tee(ctx context.Context, in <-chan sensor.Reading) (<-chan sensor.Reading, <-chan sensor.Reading) {
 	out1 := make(chan sensor.Reading, 256)
 	out2 := make(chan sensor.Reading, 256)
-
 	go func() {
 		defer close(out1)
 		defer close(out2)
@@ -33,12 +33,33 @@ func tee(ctx context.Context, in <-chan sensor.Reading) (<-chan sensor.Reading, 
 			}
 		}
 	}()
+	return out1, out2
+}
 
+func teeAnomalies(ctx context.Context, in <-chan pool.Anomaly) (<-chan pool.Anomaly, <-chan pool.Anomaly) {
+	out1 := make(chan pool.Anomaly, 64)
+	out2 := make(chan pool.Anomaly, 64)
+	go func() {
+		defer close(out1)
+		defer close(out2)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case a, ok := <-in:
+				if !ok {
+					return
+				}
+				out1 <- a
+				out2 <- a
+			}
+		}
+	}()
 	return out1, out2
 }
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// open database
@@ -67,38 +88,37 @@ func main() {
 		},
 	}
 
-	// start devices
+	// pipeline
 	readings := sensor.StartDevices(ctx, profiles)
-
-	// tee: one copy for detection, one for storage
 	forDetection, forStorage := tee(ctx, readings)
-
-	// start anomaly detection
 	registry := detect.NewRegistry()
 	anomalies := pool.Run(ctx, forDetection, 4, registry)
+	forStorage2, forBroadcast := teeAnomalies(ctx, anomalies)
 
-	// tee anomalies: one for storage, one for printing
-	anomalyCh1 := make(chan pool.Anomaly, 64)
-	anomalyCh2 := make(chan pool.Anomaly, 64)
-	go func() {
-		defer close(anomalyCh1)
-		defer close(anomalyCh2)
-		for a := range anomalies {
-			anomalyCh1 <- a
-			anomalyCh2 <- a
-		}
-	}()
+	// database writer
+	db.RunWriter(ctx, forStorage, forStorage2)
 
-	// start database writer
-	db.RunWriter(ctx, forStorage, anomalyCh1)
+	// websocket hub
+	hub := api.NewHub()
+	hub.Broadcast(ctx, forBroadcast)
 
-	fmt.Println("SentryGrid running — watching for anomalies for 10 seconds...")
+	// HTTP routes
+	server := api.New(db)
+	mux := server.Routes()
+	mux.HandleFunc("GET /events", hub.ServeWS)
+
+	fmt.Println("API running on http://localhost:9000")
+	fmt.Println("Endpoints:")
+	fmt.Println("  GET /api/health")
+	fmt.Println("  GET /api/devices/{id}/readings")
+	fmt.Println("  GET /api/anomalies")
+	fmt.Println("  GET /events  (live anomaly stream)")
 	fmt.Println()
 
-	for a := range anomalyCh2 {
-		fmt.Printf("🚨 ANOMALY  [%s]  device=%-8s  value=%.4f  method=%-8s  score=%.4f\n",
-			a.Timestamp.Format("15:04:05.000"), a.DeviceID, a.Value, a.Method, a.Score)
-	}
+	go func() {
+		<-ctx.Done()
+		fmt.Println("\nShutting down...")
+	}()
 
-	fmt.Println("\nDone. All data saved to sentrygrid.db")
+	log.Fatal(http.ListenAndServe(":9000", mux))
 }
