@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SentryGrid Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .card {
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #64748b;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .card .sub {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    .device-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .device-card {
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .device-card h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .device-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+    }
+
+    .readings-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .reading-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: #252837;
+    }
+
+    .reading-row .ts { color: #64748b; }
+    .reading-row .val { color: #38bdf8; font-weight: 600; }
+
+    .anomaly-section h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 16px;
+    }
+
+    .anomaly-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .anomaly-row {
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-left: 3px solid #ef4444;
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 12px;
+      align-items: center;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .anomaly-row.ewma  { border-left-color: #f59e0b; }
+    .anomaly-row.zscore { border-left-color: #ef4444; }
+
+    .anomaly-device {
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+    }
+
+    .anomaly-ts {
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    .anomaly-value {
+      font-size: 0.85rem;
+      color: #38bdf8;
+      font-weight: 600;
+      text-align: right;
+    }
+
+    .anomaly-method {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .method-zscore { background: #7f1d1d; color: #fca5a5; }
+    .method-ewma   { background: #78350f; color: #fcd34d; }
+
+    .empty {
+      color: #475569;
+      font-size: 0.85rem;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="dot"></div>
+  <h1>SentryGrid</h1>
+  <span style="color:#475569; font-size:0.85rem;">live sensor monitoring</span>
+</header>
+
+<div class="grid">
+  <div class="card">
+    <h2>Total Anomalies</h2>
+    <div class="value" id="total-anomalies">—</div>
+    <div class="sub">across all devices</div>
+  </div>
+  <div class="card">
+    <h2>Active Devices</h2>
+    <div class="value" id="active-devices">2</div>
+    <div class="sub">temp-01, temp-02</div>
+  </div>
+  <div class="card">
+    <h2>Latest Anomaly</h2>
+    <div class="value" id="latest-anomaly" style="font-size:1rem; margin-top:4px;">—</div>
+    <div class="sub" id="latest-ts">waiting...</div>
+  </div>
+</div>
+
+<div class="device-grid">
+  <div class="device-card">
+    <h3><span class="device-dot"></span>temp-01 — Recent Readings</h3>
+    <div class="readings-list" id="readings-temp-01">
+      <div class="empty">Loading...</div>
+    </div>
+  </div>
+  <div class="device-card">
+    <h3><span class="device-dot"></span>temp-02 — Recent Readings</h3>
+    <div class="readings-list" id="readings-temp-02">
+      <div class="empty">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<div class="anomaly-section">
+  <h2>🚨 Anomaly Log</h2>
+  <div class="anomaly-list" id="anomaly-list">
+    <div class="empty">Connecting to live stream...</div>
+  </div>
+</div>
+
+<script>
+  const BASE = 'http://localhost:9000';
+
+  // --- fetch stored anomalies on load ---
+  async function loadAnomalies() {
+    try {
+      const res = await fetch(`${BASE}/api/anomalies`);
+      const data = await res.json();
+      if (!data || data.length === 0) return;
+
+      document.getElementById('total-anomalies').textContent = data.length;
+
+      const latest = data[0];
+      document.getElementById('latest-anomaly').textContent =
+        `${latest.DeviceID} — ${latest.Value.toFixed(2)}`;
+      document.getElementById('latest-ts').textContent =
+        new Date(latest.Timestamp).toLocaleTimeString();
+
+      renderAnomalies(data);
+    } catch(e) {
+      console.error('failed to load anomalies', e);
+    }
+  }
+
+  function renderAnomalies(list) {
+    const el = document.getElementById('anomaly-list');
+    el.innerHTML = '';
+    list.slice(0, 20).forEach(a => {
+      el.appendChild(makeAnomalyRow(a));
+    });
+  }
+
+  function makeAnomalyRow(a) {
+    const row = document.createElement('div');
+    row.className = `anomaly-row ${a.Method}`;
+    row.innerHTML = `
+      <div class="anomaly-device">${a.DeviceID}</div>
+      <div class="anomaly-ts">${new Date(a.Timestamp).toLocaleTimeString()}</div>
+      <div class="anomaly-value">${a.Value.toFixed(4)}</div>
+      <div class="anomaly-method method-${a.Method}">${a.Method}</div>
+    `;
+    return row;
+  }
+
+  // --- fetch recent readings per device ---
+  async function loadReadings(deviceID) {
+    try {
+      const res = await fetch(`${BASE}/api/devices/${deviceID}/readings?limit=8`);
+      const data = await res.json();
+      const el = document.getElementById(`readings-${deviceID}`);
+      if (!data || data.length === 0) {
+        el.innerHTML = '<div class="empty">No readings yet</div>';
+        return;
+      }
+      el.innerHTML = '';
+      data.forEach(r => {
+        const row = document.createElement('div');
+        row.className = 'reading-row';
+        row.innerHTML = `
+          <span class="ts">${new Date(r.Timestamp).toLocaleTimeString()}</span>
+          <span class="val">${r.Value.toFixed(4)}</span>
+        `;
+        el.appendChild(row);
+      });
+    } catch(e) {
+      console.error(`failed to load readings for ${deviceID}`, e);
+    }
+  }
+
+  // --- live anomaly stream via SSE ---
+  function connectStream() {
+    const es = new EventSource(`${BASE}/events`);
+    let count = parseInt(document.getElementById('total-anomalies').textContent) || 0;
+
+    es.onmessage = (event) => {
+      const a = JSON.parse(event.data);
+
+      count++;
+      document.getElementById('total-anomalies').textContent = count;
+      document.getElementById('latest-anomaly').textContent =
+        `${a.DeviceID} — ${a.Value.toFixed(2)}`;
+      document.getElementById('latest-ts').textContent =
+        new Date(a.Timestamp).toLocaleTimeString();
+
+      const list = document.getElementById('anomaly-list');
+      if (list.querySelector('.empty')) list.innerHTML = '';
+
+      const row = makeAnomalyRow(a);
+      list.insertBefore(row, list.firstChild);
+
+      // keep list at max 20 rows
+      while (list.children.length > 20) {
+        list.removeChild(list.lastChild);
+      }
+    };
+
+    es.onerror = () => {
+      console.warn('SSE disconnected, retrying...');
+    };
+  }
+
+  // --- poll readings every 3 seconds ---
+  function startPolling() {
+    loadReadings('temp-01');
+    loadReadings('temp-02');
+    setInterval(() => {
+      loadReadings('temp-01');
+      loadReadings('temp-02');
+    }, 3000);
+  }
+
+  // --- boot ---
+  loadAnomalies();
+  startPolling();
+  connectStream();
+</script>
+
+</body>
+</html>

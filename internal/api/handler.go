@@ -18,6 +18,7 @@ func New(s *store.Store) *API {
 
 func (a *API) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.Handle("GET /", http.FileServer(http.Dir("web")))
 	mux.HandleFunc("GET /api/health", a.health)
 	mux.HandleFunc("GET /api/devices/{id}/readings", a.deviceReadings)
 	mux.HandleFunc("GET /api/anomalies", a.recentAnomalies)
